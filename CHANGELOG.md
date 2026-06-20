@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned for v0.2.0 — Core TUI + Git Awareness
+- bubbletea + lipgloss TUI framework
+- Interactive table with repo status
+- Git branch, dirty/clean, last commit info
+- Health indicators and stale detection
+- Keyboard navigation, filtering, folder management
+
+### Planned for v0.3.0 — Full Feature Set
+- Multi-remote support with ahead/behind counts
+- Groups/tags system with auto-assignment
+- Detail panel with full repo info
+- Open in editor, sortable columns
+- Watch mode, parallel scanning, error handling
+
 ## [0.1.0] - 2026-06-20
 
 ### Added
