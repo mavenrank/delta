@@ -13,8 +13,8 @@ type Config struct {
 	Editor      string   `json:"editor,omitempty"`
 }
 
-// defaultConfigPath returns the default config file location.
-func defaultConfigPath() (string, error) {
+// DefaultPath returns the default config file location.
+func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("could not determine home directory: %w", err)
@@ -27,7 +27,7 @@ func defaultConfigPath() (string, error) {
 func Load(path string) (*Config, error) {
 	if path == "" {
 		var err error
-		path, err = defaultConfigPath()
+		path, err = DefaultPath()
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func createDefaultConfig(path string) (*Config, error) {
 func (c *Config) Save(path string) error {
 	if path == "" {
 		var err error
-		path, err = defaultConfigPath()
+		path, err = DefaultPath()
 		if err != nil {
 			return err
 		}

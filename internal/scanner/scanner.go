@@ -5,13 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"delta/internal/git"
 )
 
-// ScanFolders walks each folder recursively, finding Git repos and non-git code folders.
-// Returns: (gitRepoPaths, nonGitFolderPaths, error)
-func ScanFolders(folders []string) ([]string, []string, error) {
-	var repos []string
-	var nonGit []string
+type Repo struct {
+	Path     string
+	Name     string
+	IsGit    bool
+	GitInfo  *git.Info
+}
+
+func ScanFolders(folders []string) ([]Repo, error) {
+	var repos []Repo
 
 	for _, folder := range folders {
 		folder = strings.Trim(folder, "\"")
@@ -22,7 +28,7 @@ func ScanFolders(folders []string) ([]string, []string, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, nil, fmt.Errorf("could not access %s: %w", folder, err)
+			return nil, fmt.Errorf("could not access %s: %w", folder, err)
 		}
 		if !info.IsDir() {
 			continue
@@ -39,90 +45,48 @@ func ScanFolders(folders []string) ([]string, []string, error) {
 			base := filepath.Base(path)
 			if base == ".git" {
 				parent := filepath.Dir(path)
-				repos = append(repos, parent)
+				repos = append(repos, Repo{
+					Path:  parent,
+					Name:  filepath.Base(parent),
+					IsGit: true,
+				})
 				return filepath.SkipDir
-			}
-
-			if isNonGitCodeFolder(path, info) {
-				nonGit = append(nonGit, path)
 			}
 
 			return nil
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("error walking %s: %w", folder, err)
+			return nil, fmt.Errorf("error walking %s: %w", folder, err)
 		}
 	}
 
-	return dedup(repos), dedup(nonGit), nil
+	repos = dedup(repos)
+	return repos, nil
 }
 
-// isNonGitCodeFolder checks if a directory looks like a code project but has no .git.
-func isNonGitCodeFolder(path string, info os.FileInfo) bool {
-	if info == nil || !info.IsDir() {
-		return false
-	}
-
-	base := filepath.Base(path)
-	if strings.HasPrefix(base, ".") {
-		return false
-	}
-
-	entries, err := os.ReadDir(path)
+func ScanFoldersWithGitInfo(folders []string) ([]Repo, error) {
+	repos, err := ScanFolders(folders)
 	if err != nil {
-		return false
+		return nil, err
 	}
 
-	hasCodeFiles := false
-	for _, entry := range entries {
-		name := entry.Name()
-		if name == ".git" {
-			return false
-		}
-		if isCodeFile(name) || isCodeDir(name) {
-			hasCodeFiles = true
+	for i := range repos {
+		if repos[i].IsGit {
+			info := git.GetInfo(repos[i].Path)
+			repos[i].GitInfo = &info
 		}
 	}
 
-	return hasCodeFiles
+	return repos, nil
 }
 
-func isCodeFile(name string) bool {
-	ext := strings.ToLower(filepath.Ext(name))
-	codeExts := []string{
-		".go", ".py", ".js", ".ts", ".jsx", ".tsx",
-		".c", ".cpp", ".h", ".hpp", ".rs", ".java",
-		".rb", ".php", ".cs", ".swift", ".kt",
-		".json", ".yaml", ".yml", ".toml",
-	}
-	for _, e := range codeExts {
-		if ext == e {
-			return true
-		}
-	}
-	return false
-}
-
-func isCodeDir(name string) bool {
-	codeDirs := []string{
-		"src", "lib", "bin", "cmd", "internal",
-		"pkg", "tests", "test", "vendor",
-	}
-	for _, d := range codeDirs {
-		if name == d {
-			return true
-		}
-	}
-	return false
-}
-
-func dedup(slice []string) []string {
+func dedup(repos []Repo) []Repo {
 	seen := make(map[string]bool)
-	result := make([]string, 0, len(slice))
-	for _, s := range slice {
-		if !seen[s] {
-			seen[s] = true
-			result = append(result, s)
+	result := make([]Repo, 0, len(repos))
+	for _, r := range repos {
+		if !seen[r.Path] {
+			seen[r.Path] = true
+			result = append(result, r)
 		}
 	}
 	return result

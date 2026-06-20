@@ -2,20 +2,6 @@
 
 Planned features for future versions of `delta`.
 
-## v0.2.0 — Core TUI + Git Awareness
-- [ ] bubbletea + lipgloss TUI framework
-- [ ] Table with columns: Repo Name, Branch, Status, Path, Last Commit
-- [ ] Color-coded status (clean / dirty / untracked)
-- [ ] Keyboard navigation (arrows, q quit, r refresh, a add folder)
-- [ ] Git branch detection
-- [ ] Dirty working tree parsing (modified/untracked/staged counts)
-- [ ] Last commit message + relative time
-- [ ] Health indicators: clean / ahead / behind / diverged / dirty / detached HEAD
-- [ ] Stale detection (last commit >90 days → warning flag)
-- [ ] Status bar (repo count, scan time)
-- [ ] Add folder via interactive prompt (handles quotes)
-- [ ] Filter/search by name (/ key)
-
 ## v0.3.0 — Full Feature Set
 - [ ] Parse all remotes from `.git/config`
 - [ ] Show remote names + URLs
