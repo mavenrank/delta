@@ -1,0 +1,52 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+delta
+delta.exe
+
+# Go test binaries
+*.test
+*.out
+
+# Go coverage
+coverage.out
+coverage.txt
+*.coverprofile
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor (optional - uncomment if not vendoring deps)
+# vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build output
+bin/
+dist/
+build/
+
+# Config (keep template, ignore personal config)
+config.local.json
+*.local.json
+
+# Logs
+*.log
+logs/
+
+# Debug
+debug.log
