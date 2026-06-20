@@ -1,6 +1,8 @@
 {
   "scan_folders": [
     "C:\\Users\\FrostyFjord\\Repos",
+    "C:\\Users\\FrostyFjord\\GitHub",
+    "C:\\Users\\FrostyFjord\\Codeberg",
     "C:\\Users\\FrostyFjord\\non-git-code"
   ],
   "editor": "code"

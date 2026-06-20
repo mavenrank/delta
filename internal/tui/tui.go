@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"delta/internal/config"
+	"delta/internal/git"
 	"delta/internal/scanner"
 )
 
@@ -40,15 +41,27 @@ type model struct {
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("63"))
+			Foreground(lipgloss.Color("63")).
+			Padding(0, 1)
+
+	subtitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("36"))
+			Foreground(lipgloss.Color("36")).
+			Padding(0, 1)
 
 	selectedStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("236")).
 			Foreground(lipgloss.Color("255"))
+
+	selectedPrefix = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true)
+
+	normalPrefix = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("238"))
 
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
@@ -71,6 +84,12 @@ var (
 	detachedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("201"))
 
+	localStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("130"))
+
+	cloudStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39"))
+
 	footerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 
@@ -79,6 +98,15 @@ var (
 
 	inputPromptStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("39"))
+)
+
+const (
+	colRepo      = 28
+	colBranch    = 14
+	colStatus    = 5
+	colHealth    = 12
+	colRemote    = 18
+	colLastCommit = 16
 )
 
 func New(cfg *config.Config, cfgPath string) model {
@@ -98,8 +126,8 @@ func (m model) scan() tea.Cmd {
 		repos, err := scanner.ScanFoldersWithGitInfo(m.cfg.ScanFolders)
 		duration := time.Since(start)
 		return scanMsg{
-			repos: repos,
-			err:   err,
+			repos:    repos,
+			err:      err,
 			scanTime: duration,
 		}
 	}
@@ -275,16 +303,16 @@ func (m model) View() string {
 
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("delta") + dimStyle.Render("  v0.2.0"))
+	b.WriteString(m.renderHeader())
 	b.WriteString("\n\n")
 
 	if m.scanning {
-		b.WriteString(dimStyle.Render("Scanning..."))
-		b.WriteString("\n")
+		b.WriteString(dimStyle.Render("  Scanning..."))
+		b.WriteString("\n\n")
 	}
 
 	if m.err != "" {
-		b.WriteString(errStyle.Render("Error: "+m.err))
+		b.WriteString(errStyle.Render("  Error: " + m.err))
 		b.WriteString("\n\n")
 	}
 
@@ -295,38 +323,42 @@ func (m model) View() string {
 
 	if m.filtering {
 		b.WriteString("\n\n")
-		b.WriteString(inputPromptStyle.Render("/ ") + m.filterText)
+		b.WriteString(inputPromptStyle.Render("  / ") + m.filterText)
 	}
 
 	if m.adding {
 		b.WriteString("\n\n")
-		b.WriteString(inputPromptStyle.Render("add folder: ") + m.addText)
+		b.WriteString(inputPromptStyle.Render("  add folder: ") + m.addText)
+		b.WriteString("  " + dimStyle.Render("(Esc to cancel)"))
 	}
 
 	return b.String()
 }
 
+func (m model) renderHeader() string {
+	title := titleStyle.Render("delta")
+	subtitle := subtitleStyle.Render("  repo scanner v0.2.0")
+	return title + subtitle
+}
+
 func (m model) renderTable() string {
 	if len(m.filtered) == 0 {
 		if len(m.repos) == 0 {
-			return dimStyle.Render("No repos found. Press 'a' to add a scan folder.")
+			return dimStyle.Render("  No repos found. Press 'a' to add a scan folder.")
 		}
-		return dimStyle.Render("No repos match filter: \"" + m.filterText + "\"")
+		return dimStyle.Render("  No repos match filter: \"" + m.filterText + "\"")
 	}
 
 	var b strings.Builder
 
-	b.WriteString(headerStyle.Render(fmt.Sprintf("%-25s %-12s %-4s %-8s %-20s %s",
-		"REPO", "BRANCH", "ST", "HEALTH", "LAST COMMIT", "PATH")))
+	header := m.renderHeaderRow()
+	b.WriteString(header)
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", min(m.width, 120)))
+	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", max(1, min(m.width-2, 120)))))
 	b.WriteString("\n")
 
 	for i, repo := range m.filtered {
-		line := m.renderRepoLine(repo)
-		if i == m.cursor {
-			line = selectedStyle.Render(line)
-		}
+		line := m.renderRepoRow(repo, i == m.cursor)
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
@@ -334,45 +366,48 @@ func (m model) renderTable() string {
 	return b.String()
 }
 
-func (m model) renderRepoLine(repo scanner.Repo) string {
-	name := truncate(repo.Name, 25)
+func (m model) renderHeaderRow() string {
+	cols := []string{
+		padStr("REPO", colRepo),
+		padStr("BRANCH", colBranch),
+		padStr("ST", colStatus),
+		padStr("HEALTH", colHealth),
+		padStr("REMOTE", colRemote),
+		padStr("LAST COMMIT", colLastCommit),
+		"PATH",
+	}
+	return "  " + headerStyle.Render(strings.Join(cols, ""))
+}
+
+func (m model) renderRepoRow(repo scanner.Repo, selected bool) string {
+	name := padStr(truncate(repo.Name, colRepo-1), colRepo)
+
 	branch := "—"
 	statusIcon := "—"
 	healthStr := "—"
-	healthIcon := "?"
+	remoteStr := "local"
 	lastCommit := "—"
-	path := truncatePath(repo.Path, 30)
+	path := truncatePath(repo.Path, 35)
 
 	if repo.GitInfo != nil {
 		gi := repo.GitInfo
 
-		branch = truncate(gi.Branch, 12)
 		if gi.Detached {
-			branch = detachedStyle.Render(branch)
-		}
-
-		statusIcon = gi.Status.Icon()
-		if gi.Status.IsClean {
-			statusIcon = cleanStyle.Render(statusIcon)
+			branch = detachedStyle.Render(padStr("(detached)", colBranch-1))
 		} else {
-			statusIcon = dirtyStyle.Render(statusIcon)
+			branch = padStr(truncate(gi.Branch, colBranch-1), colBranch)
 		}
 
-		healthIcon = gi.Health.Icon()
-		healthStr = gi.Health.String()
-		switch gi.Health {
-		case 1:
-			healthStr = aheadStyle.Render(healthStr)
-		case 2:
-			healthStr = behindStyle.Render(healthStr)
-		case 3:
-			healthStr = dirtyStyle.Render(healthStr)
-		case 5:
-			healthStr = detachedStyle.Render(healthStr)
-		default:
-			healthStr = cleanStyle.Render(healthStr)
+		if gi.Status.IsClean {
+			statusIcon = cleanStyle.Render("✓")
+		} else {
+			statusIcon = dirtyStyle.Render("M")
 		}
-		healthStr = fmt.Sprintf("%s %s", healthIcon, healthStr)
+		statusIcon = padStr(statusIcon, colStatus)
+
+		healthStr = renderHealth(gi.Health, colHealth)
+
+		remoteStr = renderRemote(gi, colRemote)
 
 		if gi.LastCommit != nil {
 			lastCommit = gi.LastCommit.RelativeTime()
@@ -380,30 +415,95 @@ func (m model) renderRepoLine(repo scanner.Repo) string {
 				lastCommit = staleStyle.Render("⚠ " + lastCommit)
 			}
 		}
+		lastCommit = padStr(lastCommit, colLastCommit)
+	} else {
+		branch = padStr("—", colBranch)
+		statusIcon = padStr("—", colStatus)
+		healthStr = padStr("—", colHealth)
+		remoteStr = localStyle.Render(padStr("no git", colRemote-1))
+		lastCommit = padStr("—", colLastCommit)
 	}
 
-	return fmt.Sprintf("%-25s %-12s %-4s %-14s %-20s %s",
-		name, branch, statusIcon, healthStr, truncate(lastCommit, 20), path)
+	prefix := "  "
+	if selected {
+		prefix = selectedPrefix.Render("▶ ")
+	}
+
+	row := name + branch + statusIcon + healthStr + remoteStr + lastCommit + dimStyle.Render(path)
+
+	if selected {
+		return prefix + selectedStyle.Render(row)
+	}
+	return prefix + normalPrefix.Render("  ") + row
+}
+
+func renderHealth(h git.Health, width int) string {
+	var icon, label string
+	switch h {
+	case git.HealthClean:
+		icon = cleanStyle.Render("●")
+		label = "clean"
+	case git.HealthAhead:
+		icon = aheadStyle.Render("↑")
+		label = "ahead"
+	case git.HealthBehind:
+		icon = behindStyle.Render("↓")
+		label = "behind"
+	case git.HealthDiverged:
+		icon = dirtyStyle.Render("↕")
+		label = "diverged"
+	case git.HealthDirty:
+		icon = dirtyStyle.Render("●")
+		label = "dirty"
+	case git.HealthDetached:
+		icon = detachedStyle.Render("◆")
+		label = "detached"
+	default:
+		icon = "?"
+		label = "unknown"
+	}
+	return padStr(icon+" "+label, width)
+}
+
+func renderRemote(gi *git.Info, width int) string {
+	if gi == nil {
+		return padStr("—", width)
+	}
+	summary := gi.RemoteSummary()
+	if summary == "local" {
+		return localStyle.Render(padStr("◉ local", width-1))
+	}
+	return cloudStyle.Render(padStr("☁ "+summary, width-1))
 }
 
 func (m model) renderFooter() string {
 	var b strings.Builder
 
-	b.WriteString(footerStyle.Render(fmt.Sprintf("%d repos", len(m.filtered))))
+	parts := []string{fmt.Sprintf("%d repos", len(m.filtered))}
 	if m.filterText != "" && !m.filtering {
-		b.WriteString(footerStyle.Render(fmt.Sprintf(" (filtered from %d)", len(m.repos))))
+		parts = append(parts, fmt.Sprintf("filtered from %d", len(m.repos)))
 	}
 	if !m.lastScan.IsZero() {
-		b.WriteString(footerStyle.Render(fmt.Sprintf("  ·  scan: %s", m.scanTime.Round(time.Millisecond))))
+		parts = append(parts, fmt.Sprintf("scan: %s", m.scanTime.Round(time.Millisecond)))
 	}
+
+	b.WriteString(footerStyle.Render("  " + strings.Join(parts, "  ·  ")))
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("[↑↓] navigate  [r] refresh  [/] filter  [a] add folder  [q] quit"))
+	b.WriteString(footerStyle.Render("  [↑↓] navigate  [r] refresh  [/] filter  [a] add folder  [q] quit"))
 
 	return b.String()
 }
 
+func padStr(s string, n int) string {
+	w := lipgloss.Width(s)
+	if w >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-w)
+}
+
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if lipgloss.Width(s) <= n {
 		return s
 	}
 	return s[:n-1] + "…"

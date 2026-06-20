@@ -103,6 +103,11 @@ func (c *Commit) IsStale() bool {
 	return time.Since(c.Date) > 90*24*time.Hour
 }
 
+type Remote struct {
+	Name string
+	URL  string
+}
+
 type Info struct {
 	Path       string
 	Branch     string
@@ -111,8 +116,56 @@ type Info struct {
 	Ahead      int
 	Behind     int
 	LastCommit *Commit
+	Remotes    []Remote
 	Detached   bool
 	Err        error
+}
+
+func (i *Info) HasRemote() bool {
+	return len(i.Remotes) > 0
+}
+
+func (i *Info) RemoteSummary() string {
+	if len(i.Remotes) == 0 {
+		return "local"
+	}
+	var names []string
+	seen := make(map[string]bool)
+	for _, r := range i.Remotes {
+		label := remoteLabel(r.URL)
+		if !seen[label] {
+			seen[label] = true
+			names = append(names, label)
+		}
+	}
+	return strings.Join(names, "+")
+}
+
+func remoteLabel(url string) string {
+	switch {
+	case strings.Contains(url, "github.com"):
+		return "github"
+	case strings.Contains(url, "codeberg.org"):
+		return "codeberg"
+	case strings.Contains(url, "gitlab.com"):
+		return "gitlab"
+	case strings.Contains(url, "bitbucket.org"):
+		return "bitbucket"
+	case strings.Contains(url, "sr.ht"):
+		return "sourcehut"
+	case strings.Contains(url, "forgejo"):
+		return "forgejo"
+	case strings.Contains(url, "gitea.com"):
+		return "gitea"
+	case strings.Contains(url, "gitea"):
+		return "gitea"
+	case strings.Contains(url, "notabug.org"):
+		return "notabug"
+	case strings.Contains(url, "gitea."):
+		return "gitea"
+	default:
+		return "remote"
+	}
 }
 
 func runGit(path string, args ...string) (string, error) {
@@ -153,6 +206,11 @@ func GetInfo(path string) Info {
 	if err == nil {
 		info.Ahead = ahead
 		info.Behind = behind
+	}
+
+	remotes, err := getRemotes(path)
+	if err == nil {
+		info.Remotes = remotes
 	}
 
 	info.Health = determineHealth(info)
@@ -224,6 +282,33 @@ func getLastCommit(path string) (*Commit, error) {
 		Message: parts[0],
 		Date:    time.Unix(timestamp, 0),
 	}, nil
+}
+
+func getRemotes(path string) ([]Remote, error) {
+	output, err := runGit(path, "remote", "-v")
+	if err != nil {
+		return nil, err
+	}
+	if output == "" {
+		return nil, nil
+	}
+
+	seen := make(map[string]bool)
+	var remotes []Remote
+	for _, line := range strings.Split(output, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		name := parts[0]
+		url := parts[1]
+		key := name + "|" + url
+		if !seen[key] {
+			seen[key] = true
+			remotes = append(remotes, Remote{Name: name, URL: url})
+		}
+	}
+	return remotes, nil
 }
 
 func getAheadBehind(path string) (int, int, error) {
