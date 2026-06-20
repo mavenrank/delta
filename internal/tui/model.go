@@ -98,6 +98,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelDown:
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+			}
+		case tea.MouseButtonWheelUp:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.adding {
 			return m.handleAddInput(msg)
@@ -116,43 +129,54 @@ func (m model) View() string {
 		return ""
 	}
 
-	var b strings.Builder
+	footer := m.renderFooter()
 
-	b.WriteString(m.renderHeader())
-	b.WriteString("\n\n")
+	inputLine := ""
+	if m.filtering {
+		inputLine = inputPromptStyle.Render("  / ") + m.filterText +
+			dimStyle.Render("  (Enter to apply, Esc to cancel)")
+	}
+	if m.adding {
+		inputLine = inputPromptStyle.Render("  add folder: ") + m.addText +
+			dimStyle.Render("  (Enter to save, Esc to cancel)")
+	}
 
+	header := m.renderHeader()
+
+	var content string
 	if m.scanning {
 		spinner := spinnerFrames[m.spinnerIdx]
-		b.WriteString(dimStyle.Render(fmt.Sprintf("  %s scanning folders...", spinner)))
-		b.WriteString("\n\n")
-	}
-
-	if m.err != "" {
-		b.WriteString(errStyle.Render("  Error: " + m.err))
-		b.WriteString("\n\n")
-	}
-
-	if m.scanning && len(m.repos) == 0 {
-		b.WriteString(dimStyle.Render("  Looking for repositories..."))
-		b.WriteString("\n\n")
+		content = dimStyle.Render(fmt.Sprintf("  %s scanning folders...", spinner))
+	} else if m.err != "" {
+		content = errStyle.Render("  Error: " + m.err)
 	} else {
-		b.WriteString(m.renderTable())
-		b.WriteString("\n\n")
+		content = m.renderTable()
 	}
 
-	b.WriteString(m.renderFooter())
+	lines := []string{header, "", content}
 
-	if m.filtering {
-		b.WriteString("\n\n")
-		b.WriteString(inputPromptStyle.Render("  / ") + m.filterText)
-		b.WriteString(dimStyle.Render("  (Enter to apply, Esc to cancel)"))
+	availableHeight := m.height - 4
+	if inputLine != "" {
+		availableHeight--
+	}
+	if availableHeight < 1 {
+		availableHeight = 1
 	}
 
-	if m.adding {
-		b.WriteString("\n\n")
-		b.WriteString(inputPromptStyle.Render("  add folder: ") + m.addText)
-		b.WriteString(dimStyle.Render("  (Enter to save, Esc to cancel)"))
+	usedLines := 0
+	for _, l := range lines {
+		usedLines += max(1, strings.Count(l, "\n")+1)
 	}
 
-	return b.String()
+	if usedLines < availableHeight {
+		lines = append(lines, strings.Repeat("\n", availableHeight-usedLines))
+	}
+
+	lines = append(lines, "", footer)
+
+	if inputLine != "" {
+		lines = append(lines, "", inputLine)
+	}
+
+	return strings.Join(lines, "\n")
 }

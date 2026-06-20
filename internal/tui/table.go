@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -30,7 +32,7 @@ func (m model) renderTable() string {
 	b.WriteString(m.renderHeaderRow())
 	b.WriteString("\n")
 	dividerWidth := fixedCols + pathWidth + 2
-	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", max(1, min(dividerWidth, m.width-2)))))
+	b.WriteString(dimStyle.Render("  " + strings.Repeat("-", max(1, min(dividerWidth, m.width-2)))))
 	b.WriteString("\n")
 
 	visibleStart, visibleEnd := m.getVisibleRange()
@@ -38,11 +40,6 @@ func (m model) renderTable() string {
 	for i := visibleStart; i < visibleEnd; i++ {
 		line := m.renderRepoRow(m.filtered[i], i == m.cursor, pathWidth)
 		b.WriteString(line)
-		b.WriteString("\n")
-	}
-
-	if visibleEnd < len(m.filtered) {
-		b.WriteString(dimStyle.Render("  ... " + itoa(len(m.filtered)-visibleEnd) + " more repos below"))
 		b.WriteString("\n")
 	}
 
@@ -63,13 +60,13 @@ func (m model) renderHeaderRow() string {
 }
 
 func (m model) renderRepoRow(repo scanner.Repo, selected bool, pathWidth int) string {
-	name := padStr(truncate(repo.Name, colRepo-1), colRepo)
-	branch := padStr("—", colBranch)
-	statusIcon := padStr("—", colStatus)
-	healthStr := padStr("—", colHealth)
-	remoteStr := padStr("—", colRemote)
-	lastCommit := padStr("—", colLastCommit)
-	path := truncatePathMiddle(repo.Path, pathWidth)
+	name := padStr(truncate(m.displayName(repo), colRepo-1), colRepo)
+	branch := padStr("-", colBranch)
+	statusIcon := padStr("-", colStatus)
+	healthStr := padStr("-", colHealth)
+	remoteStr := padStr("-", colRemote)
+	lastCommit := padStr("-", colLastCommit)
+	path := shortenPath(repo.Path, pathWidth)
 
 	if repo.GitInfo != nil {
 		gi := repo.GitInfo
@@ -81,7 +78,7 @@ func (m model) renderRepoRow(repo scanner.Repo, selected bool, pathWidth int) st
 		}
 
 		if gi.Status.IsClean {
-			statusIcon = padStr(cleanStyle.Render("✓"), colStatus)
+			statusIcon = padStr(cleanStyle.Render("v"), colStatus)
 		} else {
 			statusIcon = padStr(dirtyStyle.Render("M"), colStatus)
 		}
@@ -92,7 +89,7 @@ func (m model) renderRepoRow(repo scanner.Repo, selected bool, pathWidth int) st
 		if gi.LastCommit != nil {
 			lastCommit = gi.LastCommit.RelativeTime()
 			if gi.LastCommit.IsStale() {
-				lastCommit = staleStyle.Render("⚠ " + lastCommit)
+				lastCommit = staleStyle.Render("! " + lastCommit)
 			}
 		}
 		lastCommit = padStr(lastCommit, colLastCommit)
@@ -103,31 +100,82 @@ func (m model) renderRepoRow(repo scanner.Repo, selected bool, pathWidth int) st
 	row := name + branch + statusIcon + healthStr + remoteStr + lastCommit + dimStyle.Render(path)
 
 	if selected {
-		return "▶ " + selectedStyle.Render(" " + row)
+		return selectedStyle.Render(" > " + row)
 	}
-	return "  " + row
+	return "   " + row
+}
+
+func (m model) displayName(repo scanner.Repo) string {
+	if !m.hasDuplicateName(repo.Name) {
+		return repo.Name
+	}
+	parent := filepath.Base(filepath.Dir(repo.Path))
+	return repo.Name + " (" + parent + ")"
+}
+
+func (m model) hasDuplicateName(name string) bool {
+	count := 0
+	for _, r := range m.repos {
+		if r.Name == name {
+			count++
+			if count > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func shortenPath(p string, maxLen int) string {
+	home, err := os.UserHomeDir()
+	if err == nil && strings.HasPrefix(p, home) {
+		p = "~" + strings.TrimPrefix(p, home)
+	}
+
+	if len(p) <= maxLen {
+		return p
+	}
+
+	parts := strings.Split(p, string(filepath.Separator))
+	if len(parts) <= 2 {
+		return p
+	}
+
+	for len(parts) > 2 {
+		mid := len(parts) / 2
+		parts = append(parts[:mid], parts[mid+1:]...)
+		result := strings.Join(parts, string(filepath.Separator))
+		if len(result) <= maxLen {
+			return result
+		}
+	}
+
+	if len(p) > maxLen {
+		return "..." + p[len(p)-(maxLen-3):]
+	}
+	return p
 }
 
 func renderHealth(h git.Health, width int) string {
 	var icon, label string
 	switch h {
 	case git.HealthClean:
-		icon = cleanStyle.Render("●")
+		icon = cleanStyle.Render("o")
 		label = "clean"
 	case git.HealthAhead:
-		icon = aheadStyle.Render("↑")
+		icon = aheadStyle.Render("^")
 		label = "ahead"
 	case git.HealthBehind:
-		icon = behindStyle.Render("↓")
+		icon = behindStyle.Render("v")
 		label = "behind"
 	case git.HealthDiverged:
-		icon = dirtyStyle.Render("↕")
+		icon = dirtyStyle.Render("/\\")
 		label = "diverged"
 	case git.HealthDirty:
-		icon = dirtyStyle.Render("●")
+		icon = dirtyStyle.Render("o")
 		label = "dirty"
 	case git.HealthDetached:
-		icon = detachedStyle.Render("◆")
+		icon = detachedStyle.Render("<>")
 		label = "detached"
 	default:
 		icon = "?"
@@ -154,9 +202,9 @@ func (m model) renderFooter() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(footerStyle.Render("  " + strings.Join(parts, "  ·  ")))
+	b.WriteString(footerStyle.Render("  " + strings.Join(parts, "  -  ")))
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("  [↑↓] navigate  [r] refresh  [/] filter  [a] add folder  [q] quit"))
+	b.WriteString(footerStyle.Render("  [up/down] navigate  [r] refresh  [/] filter  [a] add folder  [q] quit"))
 	return b.String()
 }
 
@@ -166,7 +214,7 @@ func (m model) getVisibleRange() (int, int) {
 		return 0, 0
 	}
 
-	maxRows := m.height - 10
+	maxRows := m.height - 8
 	if maxRows < 5 {
 		maxRows = 5
 	}
@@ -174,21 +222,18 @@ func (m model) getVisibleRange() (int, int) {
 		maxRows = total
 	}
 
-	half := maxRows / 2
+	if m.cursor >= total {
+		m.cursor = total - 1
+	}
 
-	if m.cursor < half {
+	if m.cursor < maxRows {
 		return 0, maxRows
 	}
 
-	if m.cursor > total-half {
-		start := total - maxRows
-		if start < 0 {
-			start = 0
-		}
-		return start, total
+	start := m.cursor - maxRows + 1
+	if start < 0 {
+		start = 0
 	}
-
-	start := m.cursor - half
 	end := start + maxRows
 	if end > total {
 		end = total
@@ -197,7 +242,7 @@ func (m model) getVisibleRange() (int, int) {
 }
 
 func (m model) calcPathWidth() int {
-	used := fixedCols + 4
+	used := fixedCols + 5
 	available := m.width - used
 	if available < 20 {
 		return 20
@@ -220,19 +265,7 @@ func truncate(s string, n int) string {
 	if lipgloss.Width(s) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
-}
-
-func truncatePathMiddle(p string, n int) string {
-	if len(p) <= n {
-		return p
-	}
-	if n < 10 {
-		return "…" + p[len(p)-(n-1):]
-	}
-	keepStart := n / 3
-	keepEnd := n - keepStart - 1
-	return p[:keepStart] + "…" + p[len(p)-keepEnd:]
+	return s[:n-1] + "..."
 }
 
 func itoa(n int) string {
