@@ -6,43 +6,69 @@ A terminal UI tool for scanning and managing local Git repositories across multi
 
 `delta` recursively scans configured folders for Git repositories and displays their status in an interactive TUI — branch, health, remotes, ahead/behind counts, and more. Designed for developers who manage many repos across multiple remotes (GitHub, Codeberg, local) and multiple machines.
 
-Built with [Go](https://go.dev/) and [Bubble Tea](https://github.com/charmbracelet/bubbletea).
-
-## Features
-
-### Current (v0.1.0)
-- Recursive folder scanning for Git repos
-- JSON config for scan folders and settings
-- Non-git code folder detection
-
-### Planned
-See [ROADMAP.md](ROADMAP.md) for the full feature roadmap.
+Built with [Python](https://python.org/), [Textual](https://textual.textualize.io/), [Typer](https://typer.tiangolo.com/), and [uv](https://docs.astral.sh/uv/).
 
 ## Installation
 
 ```sh
-go build -o delta.exe
+uv tool install .
 ```
 
-## Usage
+This installs `delta` as a global command. Alternatively, run directly from the project folder:
 
 ```sh
-./delta.exe
+uv run delta tui
+```
+
+## CLI Commands
+
+```sh
+delta tui                      # open the interactive TUI (default)
+delta scan                     # scan folders and print results
+delta scan --detail            # scan with git details (branch, health, remote)
+delta config show              # show current configuration
+delta config add ~/Repos       # add a scan folder
+delta config path              # show config file location
+delta config init              # create a default config file
+delta version                  # show version
 ```
 
 ## Configuration
 
-Config is stored at `~/.config/delta/config.json`:
+Config is stored at `~/.config/delta/config.yaml`:
 
-```json
-{
-  "scan_folders": [
-    "C:\\Users\\FrostyFjord\\Repos",
-    "C:\\Users\\FrostyFjord\\non-git-code"
-  ],
-  "editor": "code"
-}
+```yaml
+scan_folders:
+  - ~/Repos
+  - ~/GitHub
+  - ~/Codeberg
+  - ~/non-git-code
+
+editor: code
+
+columns:
+  repo: true
+  branch: true
+  status: true
+  health: true
+  remote: true
+  last_commit: true
+  path: short          # full | short | hidden
+
+stale:
+  enabled: true
+  threshold_days: 90
 ```
+
+## TUI Keys
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Navigate repos |
+| `r` | Refresh — rescan all folders |
+| `/` | Filter repos by name (Enter to apply, Esc to cancel) |
+| `a` | Add a scan folder (Enter to save, Esc to cancel) |
+| `q` | Quit |
 
 ## Versioning
 

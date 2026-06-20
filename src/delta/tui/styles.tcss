@@ -1,0 +1,43 @@
+DeltaApp {
+    layout: vertical;
+    background: $surface;
+}
+
+#header {
+    height: 3;
+    content-align: center middle;
+    padding: 0 2;
+    background: $boost;
+    color: $accent;
+    text-style: bold;
+}
+
+#repo-table {
+    height: 1fr;
+}
+
+#footer {
+    height: 3;
+    dock: bottom;
+    padding: 0 2;
+    background: $boost;
+    color: $text-muted;
+}
+
+.footer-stats {
+    color: $text-muted;
+}
+
+.footer-keys {
+    color: $text-dim;
+}
+
+.status-clean { color: $success; }
+.status-dirty { color: $warning; }
+.health-ahead { color: $primary; }
+.health-behind { color: $warning; }
+.health-diverged { color: $error; }
+.health-detached { color: $secondary; }
+.remote-cloud { color: $primary; }
+.remote-local { color: $warning; }
+.stale-warning { color: $warning; text-style: bold; }

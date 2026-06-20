@@ -13,34 +13,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detail panel with full repo info (Enter key)
 - Open in VS Code or configured editor
 - Sortable columns
-- Watch/auto-refresh mode (-w flag or toggle)
-- Parallel scanning with goroutines
-- Error handling edge cases (deleted repos, permission errors, broken .git)
-- Custom config path flag (-c)
+- Watch/auto-refresh mode
+- Parallel scanning
+- Error handling edge cases
 - Local-only branch warning (no upstream)
 - Branch age detection
 
-## [0.2.0] - 2026-06-20
-
-### Added
-- bubbletea + lipgloss TUI framework with alt-screen rendering
-- Interactive table with columns: Repo Name, Branch, Status, Health, Last Commit, Path
-- Color-coded status indicators (clean / dirty / untracked)
-- Health indicators: clean, ahead, behind, diverged, dirty, detached HEAD
-- Git branch detection via `git rev-parse`
-- Dirty working tree parsing (modified/untracked/staged counts)
-- Last commit message + relative time display
-- Stale repository detection (last commit >90 days → warning flag)
-- Status bar with repo count and scan duration
-- Keyboard navigation (arrows/j/k, q quit, r refresh)
-- Filter/search by name (/ key with live filtering)
-- Add folder via interactive prompt (handles quoted paths, saves to config)
-- Internal `git` package for running and parsing git commands
+## [0.2.0] - 2026-06-21
 
 ### Changed
-- Scanner now returns rich Repo structs with GitInfo
-- Main launches TUI instead of plain text output (scan-only mode still via -scan flag)
-- Config path exported as `DefaultPath()` for external use
+- **Ported from Go to Python** (Textual + Typer + uv)
+- Config format changed from JSON to YAML with pydantic validation
+- CLI now uses Typer with subcommands: `delta tui`, `delta scan`, `delta config`
+- TUI rebuilt with Textual DataTable (fixes alignment, scrolling, footer jumping)
+- Config now supports column customization and stale threshold settings
+
+### Added
+- `delta config show` — display current configuration
+- `delta config add <path>` — add a scan folder from CLI
+- `delta config path` — show config file location
+- `delta config init` — create a default config file
+- `delta version` — show version
+- `delta scan --detail` — scan with git details (branch, health, remote)
+- YAML config with columns and stale sections
+- Mouse/trackpad scroll support (built-in via Textual)
+- Resizable columns (Textual DataTable)
+- Fixed footer via CSS dock layout
+- Duplicate repo name disambiguation with parent folder
+
+### Removed
+- Go implementation (main.go, internal/, go.mod, go.sum)
+- JSON config format (replaced by YAML)
+- Manual scroll range calculation (Textual handles natively)
+- Manual column padding (Textual DataTable handles natively)
+
+### Fixed
+- Selected row no longer shifts alignment (Textual manages row rendering)
+- Footer stays fixed at bottom (CSS dock layout)
+- No more index out of range panic (Textual handles scrolling)
+- Filter mode properly exits on Enter/Esc
+- Ctrl/CapsLock no longer adds junk characters in filter mode
 
 ## [0.1.0] - 2026-06-20
 

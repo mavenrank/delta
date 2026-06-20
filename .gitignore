@@ -1,27 +1,21 @@
-# Binaries
-*.exe
-*.exe~
-*.dll
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 *.so
-*.dylib
-delta
-delta.exe
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
 
-# Go test binaries
-*.test
-*.out
+# Virtual environments
+.venv/
+venv/
+env/
 
-# Go coverage
-coverage.out
-coverage.txt
-*.coverprofile
-
-# Go workspace
-go.work
-go.work.sum
-
-# Vendor (optional - uncomment if not vendoring deps)
-# vendor/
+# uv
+.uv-cache/
 
 # IDE
 .idea/
@@ -35,14 +29,9 @@ go.work.sum
 Thumbs.db
 desktop.ini
 
-# Build output
-bin/
-dist/
-build/
-
 # Config (keep template, ignore personal config)
-config.local.json
-*.local.json
+config.local.yaml
+*.local.yaml
 
 # Logs
 *.log

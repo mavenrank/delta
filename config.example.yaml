@@ -1,0 +1,20 @@
+scan_folders:
+  - ~/Repos
+  - ~/GitHub
+  - ~/Codeberg
+  - ~/non-git-code
+
+editor: code
+
+columns:
+  repo: true
+  branch: true
+  status: true
+  health: true
+  remote: true
+  last_commit: true
+  path: short          # full | short | hidden
+
+stale:
+  enabled: true
+  threshold_days: 90
