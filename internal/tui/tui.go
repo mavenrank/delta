@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,6 +19,8 @@ type scanMsg struct {
 	err      error
 	scanTime time.Duration
 }
+
+type spinnerMsg struct{}
 
 type model struct {
 	repos      []scanner.Repo
@@ -36,6 +39,7 @@ type model struct {
 	scanTime   time.Duration
 	lastScan   time.Time
 	quit       bool
+	spinnerIdx int
 }
 
 var (
@@ -49,19 +53,11 @@ var (
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("36")).
-			Padding(0, 1)
+			Foreground(lipgloss.Color("36"))
 
 	selectedStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("236")).
 			Foreground(lipgloss.Color("255"))
-
-	selectedPrefix = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
-			Bold(true)
-
-	normalPrefix = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("238"))
 
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
@@ -101,23 +97,27 @@ var (
 )
 
 const (
-	colRepo      = 28
-	colBranch    = 14
-	colStatus    = 5
-	colHealth    = 12
-	colRemote    = 18
+	colRepo       = 28
+	colBranch     = 14
+	colStatus     = 5
+	colHealth     = 12
+	colRemote     = 18
 	colLastCommit = 16
+	fixedCols     = colRepo + colBranch + colStatus + colHealth + colRemote + colLastCommit
 )
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func New(cfg *config.Config, cfgPath string) model {
 	return model{
-		cfg:     cfg,
-		cfgPath: cfgPath,
+		cfg:      cfg,
+		cfgPath:  cfgPath,
+		scanning: true,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return m.scan()
+	return tea.Batch(m.scan(), m.spinnerTick())
 }
 
 func (m model) scan() tea.Cmd {
@@ -133,8 +133,21 @@ func (m model) scan() tea.Cmd {
 	}
 }
 
+func (m model) spinnerTick() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return spinnerMsg{}
+	})
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case spinnerMsg:
+		if m.scanning {
+			m.spinnerIdx = (m.spinnerIdx + 1) % len(spinnerFrames)
+			return m, m.spinnerTick()
+		}
+		return m, nil
 
 	case scanMsg:
 		m.scanning = false
@@ -187,7 +200,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.scanning = true
 		m.err = ""
-		return m, m.scan()
+		m.repos = nil
+		m.filtered = nil
+		return m, tea.Batch(m.scan(), m.spinnerTick())
 
 	case "/":
 		m.filtering = true
@@ -202,41 +217,53 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	switch msg.Type {
 
-	case "esc":
+	case tea.KeyEscape:
 		m.filtering = false
 		m.filterText = ""
 		m.applyFilter()
+		return m, nil
 
-	case "enter":
+	case tea.KeyEnter:
 		m.filtering = false
 		m.applyFilter()
+		return m, nil
 
-	case "backspace":
+	case tea.KeyBackspace:
 		if len(m.filterText) > 0 {
 			m.filterText = m.filterText[:len(m.filterText)-1]
 			m.applyFilter()
 		}
+		return m, nil
 
-	default:
-		if len(msg.String()) == 1 {
-			m.filterText += msg.String()
-			m.applyFilter()
+	case tea.KeyCtrlC:
+		m.quit = true
+		return m, tea.Quit
+
+	case tea.KeyRunes:
+		runes := msg.Runes
+		for _, r := range runes {
+			if unicode.IsPrint(r) {
+				m.filterText += string(r)
+			}
 		}
+		m.applyFilter()
+		return m, nil
 	}
 
 	return m, nil
 }
 
 func (m model) handleAddInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	switch msg.Type {
 
-	case "esc":
+	case tea.KeyEscape:
 		m.adding = false
 		m.addText = ""
+		return m, nil
 
-	case "enter":
+	case tea.KeyEnter:
 		path := strings.Trim(m.addText, "\"")
 		if path != "" {
 			err := m.cfg.AddFolder(path)
@@ -251,22 +278,32 @@ func (m model) handleAddInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.scanning = true
 					m.adding = false
 					m.addText = ""
-					return m, m.scan()
+					return m, tea.Batch(m.scan(), m.spinnerTick())
 				}
 			}
 		}
 		m.adding = false
 		m.addText = ""
+		return m, nil
 
-	case "backspace":
+	case tea.KeyBackspace:
 		if len(m.addText) > 0 {
 			m.addText = m.addText[:len(m.addText)-1]
 		}
+		return m, nil
 
-	default:
-		if len(msg.String()) == 1 {
-			m.addText += msg.String()
+	case tea.KeyCtrlC:
+		m.quit = true
+		return m, tea.Quit
+
+	case tea.KeyRunes:
+		runes := msg.Runes
+		for _, r := range runes {
+			if unicode.IsPrint(r) {
+				m.addText += string(r)
+			}
 		}
+		return m, nil
 	}
 
 	return m, nil
@@ -307,7 +344,8 @@ func (m model) View() string {
 	b.WriteString("\n\n")
 
 	if m.scanning {
-		b.WriteString(dimStyle.Render("  Scanning..."))
+		spinner := spinnerFrames[m.spinnerIdx]
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  %s scanning folders...", spinner)))
 		b.WriteString("\n\n")
 	}
 
@@ -316,20 +354,26 @@ func (m model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(m.renderTable())
-	b.WriteString("\n\n")
+	if m.scanning && len(m.repos) == 0 {
+		b.WriteString(dimStyle.Render("  Looking for repositories..."))
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString(m.renderTable())
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString(m.renderFooter())
 
 	if m.filtering {
 		b.WriteString("\n\n")
 		b.WriteString(inputPromptStyle.Render("  / ") + m.filterText)
+		b.WriteString(dimStyle.Render("  (Enter to apply, Esc to cancel)"))
 	}
 
 	if m.adding {
 		b.WriteString("\n\n")
 		b.WriteString(inputPromptStyle.Render("  add folder: ") + m.addText)
-		b.WriteString("  " + dimStyle.Render("(Esc to cancel)"))
+		b.WriteString(dimStyle.Render("  (Enter to save, Esc to cancel)"))
 	}
 
 	return b.String()
@@ -349,21 +393,64 @@ func (m model) renderTable() string {
 		return dimStyle.Render("  No repos match filter: \"" + m.filterText + "\"")
 	}
 
+	pathWidth := m.calcPathWidth()
+
 	var b strings.Builder
 
 	header := m.renderHeaderRow()
 	b.WriteString(header)
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", max(1, min(m.width-2, 120)))))
+	dividerWidth := fixedCols + pathWidth + 2
+	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", max(1, min(dividerWidth, m.width-2)))))
 	b.WriteString("\n")
 
-	for i, repo := range m.filtered {
-		line := m.renderRepoRow(repo, i == m.cursor)
+	visibleStart, visibleEnd := m.getVisibleRange()
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		line := m.renderRepoRow(m.filtered[i], i == m.cursor, pathWidth)
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
 
+	if visibleEnd < len(m.filtered) {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  ... %d more repos below", len(m.filtered)-visibleEnd)))
+		b.WriteString("\n")
+	}
+
 	return b.String()
+}
+
+func (m model) getVisibleRange() (int, int) {
+	maxRows := m.height - 10
+	if maxRows < 5 {
+		maxRows = 5
+	}
+	if maxRows > len(m.filtered) {
+		maxRows = len(m.filtered)
+	}
+
+	if m.cursor < maxRows/2 {
+		return 0, maxRows
+	}
+
+	if m.cursor > len(m.filtered)-maxRows/2 {
+		return max(0, len(m.filtered)-maxRows), len(m.filtered)
+	}
+
+	start := m.cursor - maxRows/2
+	return start, start + maxRows
+}
+
+func (m model) calcPathWidth() int {
+	used := fixedCols + 4
+	available := m.width - used
+	if available < 20 {
+		return 20
+	}
+	if available > 60 {
+		return 60
+	}
+	return available
 }
 
 func (m model) renderHeaderRow() string {
@@ -379,34 +466,32 @@ func (m model) renderHeaderRow() string {
 	return "  " + headerStyle.Render(strings.Join(cols, ""))
 }
 
-func (m model) renderRepoRow(repo scanner.Repo, selected bool) string {
+func (m model) renderRepoRow(repo scanner.Repo, selected bool, pathWidth int) string {
 	name := padStr(truncate(repo.Name, colRepo-1), colRepo)
 
-	branch := "—"
-	statusIcon := "—"
-	healthStr := "—"
-	remoteStr := "local"
-	lastCommit := "—"
-	path := truncatePath(repo.Path, 35)
+	branch := padStr("—", colBranch)
+	statusIcon := padStr("—", colStatus)
+	healthStr := padStr("—", colHealth)
+	remoteStr := padStr("—", colRemote)
+	lastCommit := padStr("—", colLastCommit)
+	path := truncatePathMiddle(repo.Path, pathWidth)
 
 	if repo.GitInfo != nil {
 		gi := repo.GitInfo
 
 		if gi.Detached {
-			branch = detachedStyle.Render(padStr("(detached)", colBranch-1))
+			branch = padStr(detachedStyle.Render("(detached)"), colBranch)
 		} else {
 			branch = padStr(truncate(gi.Branch, colBranch-1), colBranch)
 		}
 
 		if gi.Status.IsClean {
-			statusIcon = cleanStyle.Render("✓")
+			statusIcon = padStr(cleanStyle.Render("✓"), colStatus)
 		} else {
-			statusIcon = dirtyStyle.Render("M")
+			statusIcon = padStr(dirtyStyle.Render("M"), colStatus)
 		}
-		statusIcon = padStr(statusIcon, colStatus)
 
 		healthStr = renderHealth(gi.Health, colHealth)
-
 		remoteStr = renderRemote(gi, colRemote)
 
 		if gi.LastCommit != nil {
@@ -417,24 +502,15 @@ func (m model) renderRepoRow(repo scanner.Repo, selected bool) string {
 		}
 		lastCommit = padStr(lastCommit, colLastCommit)
 	} else {
-		branch = padStr("—", colBranch)
-		statusIcon = padStr("—", colStatus)
-		healthStr = padStr("—", colHealth)
 		remoteStr = localStyle.Render(padStr("no git", colRemote-1))
-		lastCommit = padStr("—", colLastCommit)
-	}
-
-	prefix := "  "
-	if selected {
-		prefix = selectedPrefix.Render("▶ ")
 	}
 
 	row := name + branch + statusIcon + healthStr + remoteStr + lastCommit + dimStyle.Render(path)
 
 	if selected {
-		return prefix + selectedStyle.Render(row)
+		return "▶ " + selectedStyle.Render(" " + row)
 	}
-	return prefix + normalPrefix.Render("  ") + row
+	return "  " + row
 }
 
 func renderHealth(h git.Health, width int) string {
@@ -466,14 +542,11 @@ func renderHealth(h git.Health, width int) string {
 }
 
 func renderRemote(gi *git.Info, width int) string {
-	if gi == nil {
-		return padStr("—", width)
+	if gi == nil || len(gi.Remotes) == 0 {
+		return localStyle.Render(padStr("local", width-1))
 	}
 	summary := gi.RemoteSummary()
-	if summary == "local" {
-		return localStyle.Render(padStr("◉ local", width-1))
-	}
-	return cloudStyle.Render(padStr("☁ "+summary, width-1))
+	return cloudStyle.Render(padStr(summary, width-1))
 }
 
 func (m model) renderFooter() string {
@@ -509,11 +582,16 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
-func truncatePath(p string, n int) string {
+func truncatePathMiddle(p string, n int) string {
 	if len(p) <= n {
 		return p
 	}
-	return "…" + p[len(p)-(n-1):]
+	if n < 10 {
+		return "…" + p[len(p)-(n-1):]
+	}
+	keepStart := n / 3
+	keepEnd := n - keepStart - 1
+	return p[:keepStart] + "…" + p[len(p)-keepEnd:]
 }
 
 func min(a, b int) int {
